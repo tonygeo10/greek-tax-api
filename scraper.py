@@ -10,22 +10,22 @@ load_dotenv()
 def run_scraper():
     url = "https://www.aade.gr/egkyklioi-kai-apofaseis"
     headers = {'User-Agent': 'Mozilla/5.0'}
-    
+
     try:
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
+
         articles = []
 
-        for article in soup.select("div.views-row"):
-    a_tag = article.find("a")
-    if a_tag:
-        title = a_tag.get_text(strip=True)
-        href = a_tag["href"]
-        full_link = href if href.startswith("http") else f"https://www.aade.gr{href}"
-        articles.append((title, full_link))
-                href = link_tag['href']
-                full_link = href if href.startswith('http') else f"https://www.aade.gr{href}"
+        for row in soup.select("div.views-row"):
+            a_tag = row.find("a")
+            if a_tag:
+                title = a_tag.get_text(strip=True)
+                href = a_tag["href"]
+                full_link = href if href.startswith("http") else f"https://www.aade.gr{href}"
                 articles.append((title, full_link))
+
+        print("Found:", len(articles))
 
         # 2. DATABASE CONNECTION
         db_url = os.environ.get('DATABASE_URL')
