@@ -6,42 +6,35 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-AADE_URL = "https://www.aade.gr/egkyklioi-kai-apofaseis"
-
 def run_scraper():
+    url = "https://www.aade.gr/egkyklioi-kai-apofaseis"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "User-Agent": "Mozilla/5.0"
     }
 
     try:
-        response = requests.get(AADE_URL, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
 
         articles = []
 
-        # 👉 Βρίσκουμε ΜΟΝΟ links που ανήκουν σε ανακοινώσεις
-        for link in soup.select("a[href*='/egkyklioi-kai-apofaseis/']"):
-            title = link.get_text(strip=True)
-            href = link.get("href")
+        # ΣΩΣΤΟΣ SELECTOR για ΑΑΔΕ
+        for item in soup.select("div.views-row"):
+            link_tag = item.select_one("a")
+            if link_tag:
+                title = link_tag.get_text(strip=True)
+                href = link_tag["href"]
 
-            if not title:
-                continue
+                if title and href:
+                    full_link = href if href.startswith("http") else f"https://www.aade.gr{href}"
+                    articles.append((title, full_link))
 
-            if len(title) < 15:
-                continue
+        print(f"Found {len(articles)} articles from AADE")
 
-            if not href.startswith("http"):
-                href = f"https://www.aade.gr{href}"
-
-            articles.append((title, href))
-
-        print(f"Found {len(articles)} valid AADE articles")
-
-        # --- DATABASE ---
+        # DATABASE
         db_url = os.environ.get("DATABASE_URL")
-
         conn = psycopg2.connect(db_url, sslmode="require")
         cur = conn.cursor()
 
@@ -55,8 +48,6 @@ def run_scraper():
         """)
         conn.commit()
 
-        inserted = 0
-
         for title, link in articles:
             cur.execute("""
                 INSERT INTO news_articles (title, link)
@@ -64,18 +55,15 @@ def run_scraper():
                 ON CONFLICT (link) DO NOTHING
             """, (title, link))
 
-            if cur.rowcount > 0:
-                inserted += 1
-
         conn.commit()
+
         cur.close()
         conn.close()
 
-        print(f"Inserted {inserted} new articles")
+        print(f"Success! Inserted {len(articles)} articles.")
 
     except Exception as e:
         print("ERROR:", e)
-
 
 if __name__ == "__main__":
     run_scraper()
