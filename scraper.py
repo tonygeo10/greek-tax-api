@@ -16,7 +16,6 @@ def run_scraper():
         soup = BeautifulSoup(response.text, 'html.parser')
         articles = []
 
-        # (Your existing scraping logic to find headlines)
         for link_tag in soup.find_all('a', href=True):
             title = link_tag.get_text(strip=True)
             if len(title) > 25:
@@ -25,13 +24,24 @@ def run_scraper():
                 articles.append((title, full_link))
 
         # 2. DATABASE CONNECTION
-        # This will get the URL from .env (local) or Render Dashboard (cloud)
         db_url = os.environ.get('DATABASE_URL')
         
-        # Connect to Render (sslmode is required for external connections)
-        conn = psycopg2.connect(db_url)
+        # Προσθέτουμε sslmode='require' για τη σύνδεση από το GitHub Actions στο Render
+        conn = psycopg2.connect(db_url, sslmode='require')
         cur = conn.cursor()
 
+        # ΑΥΤΟ ΗΤΑΝ ΤΟ ΚΛΕΙΔΙ: Δημιουργία του πίνακα αν δεν υπάρχει
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS news_articles (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                link TEXT UNIQUE NOT NULL,
+                extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+
+        # 3. INSERT DATA
         for title, link in articles:
             cur.execute(
                 "INSERT INTO news_articles (title, link) VALUES (%s, %s) ON CONFLICT (link) DO NOTHING",
@@ -39,7 +49,7 @@ def run_scraper():
             )
 
         conn.commit()
-        print(f"Success! Captured {len(articles)} articles to the cloud.")
+        print(f"Success! Captured {len(articles)} articles and ensured table exists.")
 
     except Exception as e:
         print(f"Error: {e}")
