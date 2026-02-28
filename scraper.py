@@ -1,50 +1,35 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import psycopg2
+from dotenv import load_dotenv
+
+# 1. Load variables from .env (only used for local development)
+load_dotenv()
 
 def run_scraper():
-    # Use the specific 'Circulars' page which is highly active
-    url = "https://www.aade.gr/egkyklioi-kai-apofaseis" 
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    }
-    
-    print(f"Connecting to: {url}...")
+    url = "https://www.aade.gr/egkyklioi-kai-apofaseis"
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
         response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code == 404:
-            print("Error 404: The URL is incorrect. Trying fallback URL...")
-            # Fallback to the homepage if the specific section fails
-            url = "https://www.aade.gr/"
-            response = requests.get(url, headers=headers, timeout=10)
-
         soup = BeautifulSoup(response.text, 'html.parser')
         articles = []
 
-        # AADE's current layout uses 'views-field-title' and 'views-field-nothing'
-        # We also look for links containing 'pdf' or 'egkyklioi'
+        # (Your existing scraping logic to find headlines)
         for link_tag in soup.find_all('a', href=True):
             title = link_tag.get_text(strip=True)
-            href = link_tag['href']
-            
-            # Filter for actual news/decisions (usually longer titles)
-            if len(title) > 30 and ('/egkyklioi' in href or 'deltia-typoy' in href):
+            if len(title) > 25:
+                href = link_tag['href']
                 full_link = href if href.startswith('http') else f"https://www.aade.gr{href}"
                 articles.append((title, full_link))
 
-        if not articles:
-            print("Connected, but found 0 headlines. The structure might be protected.")
-            return
-
-        # DATABASE CONNECTION
-        conn = psycopg2.connect(
-            host="localhost",
-            database="tax_hub",
-            user="postgres",
-            password="123456" # <--- Update this!
-        )
+        # 2. DATABASE CONNECTION
+        # This will get the URL from .env (local) or Render Dashboard (cloud)
+        db_url = os.environ.get('DATABASE_URL')
+        
+        # Connect to Render (sslmode is required for external connections)
+        conn = psycopg2.connect(db_url)
         cur = conn.cursor()
 
         for title, link in articles:
@@ -54,7 +39,7 @@ def run_scraper():
             )
 
         conn.commit()
-        print(f"Success! Found {len(articles)} items.")
+        print(f"Success! Captured {len(articles)} articles to the cloud.")
 
     except Exception as e:
         print(f"Error: {e}")
