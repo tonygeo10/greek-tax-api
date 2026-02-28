@@ -1,69 +1,34 @@
-import os
 import requests
 from bs4 import BeautifulSoup
-import psycopg2
-from dotenv import load_dotenv
 
-load_dotenv()
+def scrape_tax_news():
+    url = "https://www.aade.gr/news"
+    headers = {"User-Agent": "Mozilla/5.0"}
 
-def run_scraper():
-    url = "https://www.aade.gr/egkyklioi-kai-apofaseis"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
+    results = []
 
-        soup = BeautifulSoup(response.text, "html.parser")
+    # Βρες όλα τα links που περιέχουν /news/
+    for link in soup.find_all("a", href=True):
+        href = link["href"]
 
-        articles = []
+        if "/news/" in href:
+            title = link.get_text(strip=True)
 
-        # ΣΩΣΤΟΣ SELECTOR για ΑΑΔΕ
-        for item in soup.select("div.views-row"):
-            link_tag = item.select_one("a")
-            if link_tag:
-                title = link_tag.get_text(strip=True)
-                href = link_tag["href"]
+            if len(title) > 10:
+                full_link = href if href.startswith("http") else f"https://www.aade.gr{href}"
+                results.append((title, full_link))
 
-                if title and href:
-                    full_link = href if href.startswith("http") else f"https://www.aade.gr{href}"
-                    articles.append((title, full_link))
+    # Αφαίρεση duplicates
+    results = list(set(results))
 
-        print(f"Found {len(articles)} articles from AADE")
+    return results
 
-        # DATABASE
-        db_url = os.environ.get("DATABASE_URL")
-        conn = psycopg2.connect(db_url, sslmode="require")
-        cur = conn.cursor()
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS news_articles (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL,
-                link TEXT UNIQUE NOT NULL,
-                extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-
-        for title, link in articles:
-            cur.execute("""
-                INSERT INTO news_articles (title, link)
-                VALUES (%s, %s)
-                ON CONFLICT (link) DO NOTHING
-            """, (title, link))
-
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        print(f"Success! Inserted {len(articles)} articles.")
-
-    except Exception as e:
-        print("ERROR:", e)
 
 if __name__ == "__main__":
-    run_scraper()
+    articles = scrape_tax_news()
+    print(f"Found {len(articles)} articles")
+    for a in articles[:10]:
+        print(a)
