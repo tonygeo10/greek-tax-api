@@ -4,63 +4,78 @@ from bs4 import BeautifulSoup
 import psycopg2
 from dotenv import load_dotenv
 
-# 1. Load variables from .env (only used for local development)
 load_dotenv()
 
+AADE_URL = "https://www.aade.gr/egkyklioi-kai-apofaseis"
+
 def run_scraper():
-    url = "https://www.aade.gr/egkyklioi-kai-apofaseis"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        response = requests.get(AADE_URL, headers=headers, timeout=15)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
 
         articles = []
 
-        for row in soup.select("div.views-row"):
-            a_tag = row.find("a")
-            if a_tag:
-                title = a_tag.get_text(strip=True)
-                href = a_tag["href"]
-                full_link = href if href.startswith("http") else f"https://www.aade.gr{href}"
-                articles.append((title, full_link))
+        # 👉 Βρίσκουμε ΜΟΝΟ links που ανήκουν σε ανακοινώσεις
+        for link in soup.select("a[href*='/egkyklioi-kai-apofaseis/']"):
+            title = link.get_text(strip=True)
+            href = link.get("href")
 
-        print("Found:", len(articles))
+            if not title:
+                continue
 
-        # 2. DATABASE CONNECTION
-        db_url = os.environ.get('DATABASE_URL')
-        
-        # Προσθέτουμε sslmode='require' για τη σύνδεση από το GitHub Actions στο Render
-        conn = psycopg2.connect(db_url, sslmode='require')
+            if len(title) < 15:
+                continue
+
+            if not href.startswith("http"):
+                href = f"https://www.aade.gr{href}"
+
+            articles.append((title, href))
+
+        print(f"Found {len(articles)} valid AADE articles")
+
+        # --- DATABASE ---
+        db_url = os.environ.get("DATABASE_URL")
+
+        conn = psycopg2.connect(db_url, sslmode="require")
         cur = conn.cursor()
 
-        # ΑΥΤΟ ΗΤΑΝ ΤΟ ΚΛΕΙΔΙ: Δημιουργία του πίνακα αν δεν υπάρχει
-        cur.execute('''
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS news_articles (
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
                 link TEXT UNIQUE NOT NULL,
                 extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        """)
         conn.commit()
 
-        # 3. INSERT DATA
+        inserted = 0
+
         for title, link in articles:
-            cur.execute(
-                "INSERT INTO news_articles (title, link) VALUES (%s, %s) ON CONFLICT (link) DO NOTHING",
-                (title, link)
-            )
+            cur.execute("""
+                INSERT INTO news_articles (title, link)
+                VALUES (%s, %s)
+                ON CONFLICT (link) DO NOTHING
+            """, (title, link))
+
+            if cur.rowcount > 0:
+                inserted += 1
 
         conn.commit()
-        print(f"Success! Captured {len(articles)} articles and ensured table exists.")
+        cur.close()
+        conn.close()
+
+        print(f"Inserted {inserted} new articles")
 
     except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        if 'conn' in locals():
-            cur.close()
-            conn.close()
+        print("ERROR:", e)
+
 
 if __name__ == "__main__":
     run_scraper()
