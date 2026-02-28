@@ -16,9 +16,13 @@ def run_scraper():
         soup = BeautifulSoup(response.text, 'html.parser')
         articles = []
 
-        for link_tag in soup.find_all('a', href=True):
-            title = link_tag.get_text(strip=True)
-            if len(title) > 25:
+        for article in soup.select("div.views-row"):
+    a_tag = article.find("a")
+    if a_tag:
+        title = a_tag.get_text(strip=True)
+        href = a_tag["href"]
+        full_link = href if href.startswith("http") else f"https://www.aade.gr{href}"
+        articles.append((title, full_link))
                 href = link_tag['href']
                 full_link = href if href.startswith('http') else f"https://www.aade.gr{href}"
                 articles.append((title, full_link))
