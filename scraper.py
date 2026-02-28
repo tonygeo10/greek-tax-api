@@ -1,34 +1,55 @@
 import requests
 from bs4 import BeautifulSoup
 
-def scrape_tax_news():
-    url = "https://www.aade.gr/news"
-    headers = {"User-Agent": "Mozilla/5.0"}
+BASE_URL = "https://www.aade.gr"
 
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+SECTIONS = [
+    "/news",
+    "/egkyklioi-kai-apofaseis",
+    "/deltia-typou",
+    "/anakoinoseis",
+    "/enhmerotika-deltia",
+    "/nomothesia"
+]
 
+headers = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+def scrape_all_aade_sections():
     results = []
 
-    # Βρες όλα τα links που περιέχουν /news/
-    for link in soup.find_all("a", href=True):
-        href = link["href"]
+    for section in SECTIONS:
+        url = BASE_URL + section
+        print(f"Scraping: {url}")
 
-        if "/news/" in href:
-            title = link.get_text(strip=True)
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            soup = BeautifulSoup(response.text, "html.parser")
 
-            if len(title) > 10:
-                full_link = href if href.startswith("http") else f"https://www.aade.gr{href}"
-                results.append((title, full_link))
+            # Βρίσκουμε όλα τα links που έχουν πραγματικό τίτλο
+            for a in soup.find_all("a", href=True):
+                title = a.get_text(strip=True)
 
-    # Αφαίρεση duplicates
-    results = list(set(results))
+                if len(title) > 30:  # φιλτράρισμα άχρηστων links
+                    link = a["href"]
+                    full_link = link if link.startswith("http") else BASE_URL + link
+
+                    results.append({
+                        "section": section,
+                        "title": title,
+                        "link": full_link
+                    })
+
+        except Exception as e:
+            print(f"Error in {section}: {e}")
 
     return results
 
 
 if __name__ == "__main__":
-    articles = scrape_tax_news()
-    print(f"Found {len(articles)} articles")
-    for a in articles[:10]:
-        print(a)
+    articles = scrape_all_aade_sections()
+    print(f"\nFound {len(articles)} articles\n")
+
+    for art in articles[:10]:
+        print(art["title"])
