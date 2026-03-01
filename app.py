@@ -5,7 +5,7 @@ from flask_cors import CORS
 
 app = Flask(__name__)
 
-# ✅ Allow only your GitHub Pages domain
+# Allow GitHub Pages frontend
 CORS(app, resources={
     r"/api/*": {
         "origins": "https://tonygeo10.github.io"
@@ -14,8 +14,7 @@ CORS(app, resources={
 
 def get_db_connection():
     db_url = os.environ.get("DATABASE_URL")
-    conn = psycopg2.connect(db_url)
-    return conn
+    return psycopg2.connect(db_url)
 
 @app.route("/")
 def index():
@@ -28,9 +27,9 @@ def get_news():
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT title, link, extracted_at
+            SELECT title, link, source, created_at
             FROM news_articles
-            ORDER BY extracted_at DESC
+            ORDER BY created_at DESC
             LIMIT 20
         """)
 
@@ -40,7 +39,8 @@ def get_news():
             {
                 "title": row[0],
                 "link": row[1],
-                "extracted_at": row[2].isoformat() if row[2] else None
+                "source": row[2],
+                "created_at": row[3].isoformat() if row[3] else None
             }
             for row in rows
         ]
