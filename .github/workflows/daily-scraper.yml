@@ -1,4 +1,4 @@
- name: Daily Tax Scraper
+name: Daily Tax Scraper
 
 on:
   schedule:
