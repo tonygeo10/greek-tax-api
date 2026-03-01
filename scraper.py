@@ -2,7 +2,8 @@ import os
 import requests
 import psycopg2
 from bs4 import BeautifulSoup
-
+db_url = os.environ.get("DATABASE_URL")
+print("DB URL starts with:", db_url.split("@")[0] if db_url else "None")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_connection():
