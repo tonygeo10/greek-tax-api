@@ -1,111 +1,75 @@
-import os
+ import os
 import requests
 import psycopg2
 from bs4 import BeautifulSoup
 from datetime import datetime
-import feedparser
 
 print("🚀 Scraper started")
 
 DB_URL = os.environ.get("DATABASE_URL")
+
 print("DB URL exists:", bool(DB_URL))
 
 if not DB_URL:
     raise Exception("DATABASE_URL not set")
 
-print("DB URL starts with:", DB_URL[:35])
 
-
-# -------------------------
-# DB CONNECTION
-# -------------------------
 def get_connection():
     return psycopg2.connect(DB_URL, sslmode="require")
 
 
-# -------------------------
-# HTML SCRAPER
-# -------------------------
-def scrape_html(name, url):
-    print(f"\n🔎 Scraping HTML: {name}")
-    print("URL:", url)
+def scrape_aade_news():
+    print("\n🔎 Scraping AADE News")
+
+    url = "https://www.aade.gr/news"
 
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Accept-Language": "el-GR,el;q=0.9"
     }
 
-    try:
-        r = requests.get(url, headers=headers, timeout=20)
-        print("Status code:", r.status_code)
+    response = requests.get(url, headers=headers, timeout=20)
 
-        if r.status_code != 200:
-            print("⚠ Failed request")
-            return []
+    print("Status code:", response.status_code)
 
-        soup = BeautifulSoup(r.text, "html.parser")
-        rows = soup.select("div.views-row")
-
-        print("HTML elements found:", len(rows))
-
-        results = []
-
-        for row in rows:
-            a = row.select_one("a")
-            if not a:
-                continue
-
-            title = a.get_text(strip=True)
-            link = a.get("href")
-
-            if not link:
-                continue
-
-            if not link.startswith("http"):
-                link = "https://www.aade.gr" + link
-
-            results.append((title, link, name))
-
-        print("Valid extracted:", len(results))
-        return results
-
-    except Exception as e:
-        print("❌ HTML scrape error:", e)
+    if response.status_code != 200:
+        print("❌ Request failed")
         return []
 
+    soup = BeautifulSoup(response.text, "html.parser")
 
-# -------------------------
-# RSS SCRAPER
-# -------------------------
-def scrape_rss(name, url):
-    print(f"\n📡 Trying RSS: {name}")
-    print("URL:", url)
+    rows = soup.select("div.views-row")
 
-    try:
-        feed = feedparser.parse(url)
-        print("Entries found:", len(feed.entries))
+    print("HTML elements found:", len(rows))
 
-        results = []
+    results = []
 
-        for entry in feed.entries:
-            results.append((entry.title, entry.link, name))
+    for row in rows:
+        a = row.find("a")
+        if not a:
+            continue
 
-        print("Valid RSS extracted:", len(results))
-        return results
+        title = a.get_text(strip=True)
+        link = a.get("href")
 
-    except Exception as e:
-        print("❌ RSS error:", e)
-        return []
+        if not link:
+            continue
+
+        if not link.startswith("http"):
+            link = "https://www.aade.gr" + link
+
+        results.append((title, link, "AADE News"))
+
+    print("Valid extracted:", len(results))
+
+    return results
 
 
-# -------------------------
-# INSERT INTO DATABASE
-# -------------------------
 def insert_articles(articles):
 
     if not articles:
-        print("⚠ No articles to insert.")
-        return 0
+        print("⚠ No articles to insert")
+        return
 
     conn = get_connection()
     cur = conn.cursor()
@@ -113,43 +77,28 @@ def insert_articles(articles):
     inserted = 0
 
     for title, link, source in articles:
-        try:
-            cur.execute("""
-                INSERT INTO news_articles (title, link, source, created_at)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (link) DO NOTHING
-            """, (title, link, source, datetime.utcnow()))
+        cur.execute("""
+            INSERT INTO news_articles (title, link, source, created_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (link) DO NOTHING
+        """, (title, link, source, datetime.utcnow()))
 
-            if cur.rowcount > 0:
-                inserted += 1
-
-        except Exception as e:
-            print("Insert error:", e)
+        if cur.rowcount > 0:
+            inserted += 1
 
     conn.commit()
     cur.close()
     conn.close()
 
     print("🆕 New records inserted:", inserted)
-    return inserted
 
 
-# -------------------------
-# MAIN
-# -------------------------
+# ---------------- MAIN ----------------
 
-all_articles = []
+articles = scrape_aade_news()
 
-all_articles += scrape_rss("AADE RSS", "https://www.aade.gr/rss.xml")
-all_articles += scrape_html("AADE News", "https://www.aade.gr/news")
-all_articles += scrape_html("AADE Nomothesia", "https://www.aade.gr/nomothesia")
+print("\n📊 Total extracted:", len(articles))
 
-print("\n📊 Total extracted:", len(all_articles))
-
-insert_articles(all_articles)
+insert_articles(articles)
 
 print("✅ Scraper finished")
-
-        if response.status_code != 200:
-            print("❌ Blocked by server")
-            return []
