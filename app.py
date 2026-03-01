@@ -28,6 +28,16 @@ def get_articles():
 
     if category:
         cursor.execute("""
+            SELECT COUNT(*) FROM news_articles WHERE category = %s
+        """, (category,))
+    else:
+        cursor.execute("SELECT COUNT(*) FROM news_articles")
+
+    total = cursor.fetchone()[0]
+    total_pages = (total + per_page - 1) // per_page
+
+    if category:
+        cursor.execute("""
             SELECT title, link, category, source, published_at
             FROM news_articles
             WHERE category = %s
@@ -56,8 +66,12 @@ def get_articles():
     ]
 
     conn.close()
-    return jsonify(articles)
 
+    return jsonify({
+        "articles": articles,
+        "page": page,
+        "total_pages": total_pages
+    })
 
 @app.route("/")
 def home():
