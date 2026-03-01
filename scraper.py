@@ -3,7 +3,7 @@ import requests
 import psycopg2
 import xml.etree.ElementTree as ET
 from datetime import datetime
-
+print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
