@@ -24,14 +24,14 @@ def get_connection():
 
 
 # -------------------------
-# GENERIC HTML SCRAPER
+# HTML SCRAPER
 # -------------------------
 def scrape_html(name, url):
     print(f"\n🔎 Scraping HTML: {name}")
     print("URL:", url)
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0",
         "Accept-Language": "el-GR,el;q=0.9"
     }
 
@@ -40,7 +40,7 @@ def scrape_html(name, url):
         print("Status code:", r.status_code)
 
         if r.status_code != 200:
-            print("⚠ Blocked or failed")
+            print("⚠ Failed request")
             return []
 
         soup = BeautifulSoup(r.text, "html.parser")
@@ -52,17 +52,19 @@ def scrape_html(name, url):
 
         for row in rows:
             a = row.select_one("a")
-            if a:
-                title = a.get_text(strip=True)
-                link = a.get("href")
+            if not a:
+                continue
 
-                if not link:
-                    continue
+            title = a.get_text(strip=True)
+            link = a.get("href")
 
-                if not link.startswith("http"):
-                    link = "https://www.aade.gr" + link
+            if not link:
+                continue
 
-                results.append((title, link, name))
+            if not link.startswith("http"):
+                link = "https://www.aade.gr" + link
+
+            results.append((title, link, name))
 
         print("Valid extracted:", len(results))
         return results
@@ -100,6 +102,7 @@ def scrape_rss(name, url):
 # INSERT INTO DATABASE
 # -------------------------
 def insert_articles(articles):
+
     if not articles:
         print("⚠ No articles to insert.")
         return 0
@@ -116,7 +119,7 @@ def insert_articles(articles):
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (link) DO NOTHING
             """, (title, link, source, datetime.utcnow()))
-            
+
             if cur.rowcount > 0:
                 inserted += 1
 
@@ -132,15 +135,12 @@ def insert_articles(articles):
 
 
 # -------------------------
-# MAIN EXECUTION
+# MAIN
 # -------------------------
 
 all_articles = []
 
-# 1️⃣ Try RSS first (most stable)
 all_articles += scrape_rss("AADE RSS", "https://www.aade.gr/rss.xml")
-
-# 2️⃣ Fallback HTML
 all_articles += scrape_html("AADE News", "https://www.aade.gr/news")
 all_articles += scrape_html("AADE Nomothesia", "https://www.aade.gr/nomothesia")
 
@@ -149,7 +149,6 @@ print("\n📊 Total extracted:", len(all_articles))
 insert_articles(all_articles)
 
 print("✅ Scraper finished")
-    return results
 
         if response.status_code != 200:
             print("❌ Blocked by server")
