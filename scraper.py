@@ -2,103 +2,106 @@ import os
 import requests
 import psycopg2
 from bs4 import BeautifulSoup
-from datetime import datetime
 
 print("🚀 Scraper started")
 
-DB_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-print("DB URL exists:", bool(DB_URL))
-
-if not DB_URL:
-    raise Exception("DATABASE_URL not set")
-
-
-def get_connection():
-    return psycopg2.connect(DB_URL, sslmode="require")
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Accept-Language": "el-GR,el;q=0.9,en;q=0.8",
+    "Referer": "https://www.google.com/"
+}
 
 
-def scrape_aade_news():
-    print("\n🔎 Scraping AADE News")
-
-    url = "https://www.aade.gr/news"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "el-GR,el;q=0.9"
+SOURCES = [
+    {
+        "name": "AADE Announcements",
+        "url": "https://www.aade.gr/anakoinoseis"
+    },
+    {
+        "name": "AADE Nomothesia",
+        "url": "https://www.aade.gr/nomothesia"
     }
+]
 
-    response = requests.get(url, headers=headers, timeout=20)
 
-    print("Status code:", response.status_code)
+def scrape_site(source):
+    print(f"\n🔎 Scraping: {source['name']}")
+    print("URL:", source["url"])
 
-    if response.status_code != 200:
-        print("❌ Request failed")
+    try:
+        response = requests.get(source["url"], headers=HEADERS, timeout=15)
+        print("Status code:", response.status_code)
+
+        if response.status_code != 200:
+            print("❌ Request blocked or failed")
+            return []
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        items = soup.find_all("div", class_="views-field-title")
+        print("Elements found:", len(items))
+
+        results = []
+
+        for item in items:
+            link_tag = item.find("a")
+            if link_tag:
+                title = link_tag.get_text(strip=True)
+                link = link_tag.get("href")
+
+                if not link.startswith("http"):
+                    link = "https://www.aade.gr" + link
+
+                results.append((title, link, source["name"]))
+
+        print("Valid articles extracted:", len(results))
+        return results
+
+    except Exception as e:
+        print("❌ Exception:", e)
         return []
 
-    soup = BeautifulSoup(response.text, "html.parser")
 
-    rows = soup.select("div.views-row")
-
-    print("HTML elements found:", len(rows))
-
-    results = []
-
-    for row in rows:
-        a = row.find("a")
-        if not a:
-            continue
-
-        title = a.get_text(strip=True)
-        link = a.get("href")
-
-        if not link:
-            continue
-
-        if not link.startswith("http"):
-            link = "https://www.aade.gr" + link
-
-        results.append((title, link, "AADE News"))
-
-    print("Valid extracted:", len(results))
-
-    return results
-
-
-def insert_articles(articles):
-
+def save_to_db(articles):
     if not articles:
         print("⚠ No articles to insert")
-        return
+        return 0
 
-    conn = get_connection()
+    conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     inserted = 0
 
     for title, link, source in articles:
-        cur.execute("""
-            INSERT INTO news_articles (title, link, source, created_at)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (link) DO NOTHING
-        """, (title, link, source, datetime.utcnow()))
-
-        if cur.rowcount > 0:
+        try:
+            cur.execute("""
+                INSERT INTO news_articles (title, link, source)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (link) DO NOTHING
+            """, (title, link, source))
             inserted += 1
+        except Exception as e:
+            print("Insert error:", e)
 
     conn.commit()
     cur.close()
     conn.close()
 
-    print("🆕 New records inserted:", inserted)
+    return inserted
 
 
-# ---------------- MAIN ----------------
+# MAIN
+all_articles = []
 
-articles = scrape_aade_news()
+for source in SOURCES:
+    articles = scrape_site(source)
+    all_articles.extend(articles)
 
-print("\n📊 Total extracted:", len(articles))
+print("\n📊 Total extracted:", len(all_articles))
 
-insert_articles(articles)
+new_records = save_to_db(all_articles)
 
 print("✅ Scraper finished")
+print("New records added:", new_records)
