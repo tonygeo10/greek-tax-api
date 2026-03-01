@@ -11,4 +11,10 @@ flask
 flask-cors
 psycopg2-binary
 gunicorn
+Flask
+flask-cors
+psycopg2-binary
+requests
+feedparser
+python-dotenv
 
