@@ -5,7 +5,8 @@ from bs4 import BeautifulSoup
 db_url = os.environ.get("DATABASE_URL")
 print("DB URL starts with:", db_url.split("@")[0] if db_url else "None")
 DATABASE_URL = os.environ.get("DATABASE_URL")
-
+print("🚀 Scraper started")
+print("DB URL exists:", bool(os.environ.get("DATABASE_URL")))
 def get_connection():
     return psycopg2.connect(DATABASE_URL)
 
@@ -48,7 +49,7 @@ def save_to_db(articles):
     conn.commit()
     cur.close()
     conn.close()
-
+print("✅ Scraper finished")
 
 if __name__ == "__main__":
     articles = scrape_latest_20()
