@@ -1,0 +1,27 @@
+ name: Daily Tax Scraper
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # Κάθε μέρα 05:00 UTC (07:00 Ελλάδα χειμώνα)
+  workflow_dispatch:       # Να μπορείς να το τρέχεις manual
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scraper.py
