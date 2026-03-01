@@ -1,101 +1,87 @@
 import os
-import requests
 import psycopg2
-import xml.etree.ElementTree as ET
+import feedparser
 from datetime import datetime
-print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
+from dotenv import load_dotenv
 
-SOURCES = {
-    "Taxheaven Feed": "https://www.taxheaven.gr/feed/",
-    "Soft New": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_new.xml",
-    "Soft Law": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_law.xml",
-    "Soft Articles": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_art.xml",
-}
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-def get_db_connection():
-    db_url = os.environ.get("DATABASE_URL")
-    return psycopg2.connect(db_url)
 
-def scrape_xml(name, url):
-    print(f"🔎 Scraping {name}")
-    print(f"URL: {url}")
+SOURCES = [
+    {
+        "name": "Taxheaven",
+        "url": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_new.xml",
+        "category": "news"
+    },
+    {
+        "name": "Taxheaven",
+        "url": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_law.xml",
+        "category": "law"
+    },
+    {
+        "name": "Taxheaven",
+        "url": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_art.xml",
+        "category": "articles"
+    },
+    {
+        "name": "Naftemporiki",
+        "url": "https://www.naftemporiki.gr/finance/feed/",
+        "category": "finance"
+    }
+]
 
-    response = requests.get(url, headers=HEADERS, timeout=15)
-    print("Status:", response.status_code)
 
-    if response.status_code != 200:
-        print("❌ Failed")
-        return []
+def get_connection():
+    return psycopg2.connect(DATABASE_URL)
 
-    root = ET.fromstring(response.content)
 
-    articles = []
+def insert_article(cursor, title, link, category, source, published):
+    cursor.execute("""
+        INSERT INTO news_articles (title, link, category, source, published_at)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (link) DO NOTHING
+    """, (title, link, category, source, published))
 
-    for item in root.findall(".//item"):
-        title = item.findtext("title")
-        link = item.findtext("link")
 
-        if title and link:
-            articles.append({
-                "title": title.strip(),
-                "link": link.strip(),
-                "source": name
-            })
+def scrape():
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    print(f"✅ Found {len(articles)} items")
-    return articles
+    total_added = 0
 
-def insert_articles(articles):
-    if not articles:
-        print("⚠ No articles to insert")
-        return 0
+    for source in SOURCES:
+        print(f"🔎 Scraping {source['name']} - {source['category']}")
 
-    conn = get_db_connection()
-    cur = conn.cursor()
+        feed = feedparser.parse(source["url"])
 
-    inserted = 0
+        for entry in feed.entries:
+            title = entry.get("title")
+            link = entry.get("link")
 
-    for art in articles:
-        try:
-            cur.execute("""
-                INSERT INTO news_articles (title, link, source)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (link) DO NOTHING
-            """, (art["title"], art["link"], art["source"]))
-            inserted += cur.rowcount
-        except Exception as e:
-            print("Insert error:", e)
+            published = None
+            if hasattr(entry, "published_parsed") and entry.published_parsed:
+                published = datetime(*entry.published_parsed[:6])
 
-    conn.commit()
-    cur.close()
+            try:
+                insert_article(
+                    cursor,
+                    title,
+                    link,
+                    source["category"],
+                    source["name"],
+                    published
+                )
+                total_added += 1
+            except Exception as e:
+                print("Insert error:", e)
+                conn.rollback()
+
+        conn.commit()
+
     conn.close()
-
-    return inserted
-
-def run_scraper():
-    print("🚀 Scraper started")
-
-    all_articles = []
-
-    for name, url in SOURCES.items():
-        try:
-            articles = scrape_xml(name, url)
-            all_articles.extend(articles)
-        except Exception as e:
-            print("❌ Error:", e)
-
-    print(f"📊 Total extracted: {len(all_articles)}")
-
-    new_records = insert_articles(all_articles)
-
-    print(f"🆕 New records added: {new_records}")
-    print("✅ Scraper finished")
-
-    return new_records
+    print(f"✅ Finished. Added: {total_added}")
 
 
 if __name__ == "__main__":
-    run_scraper()
+    scrape()
