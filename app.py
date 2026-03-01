@@ -1,59 +1,68 @@
 import os
 import psycopg2
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 
-# Allow GitHub Pages frontend
-CORS(app, resources={
-    r"/api/*": {
-        "origins": "https://tonygeo10.github.io"
-    }
-})
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-def get_db_connection():
-    db_url = os.environ.get("DATABASE_URL")
-    return psycopg2.connect(db_url)
+
+def get_connection():
+    return psycopg2.connect(DATABASE_URL)
+
+
+@app.route("/api/articles")
+def get_articles():
+    category = request.args.get("category")
+    page = int(request.args.get("page", 1))
+    per_page = 10
+    offset = (page - 1) * per_page
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if category:
+        cursor.execute("""
+            SELECT title, link, category, source, published_at
+            FROM news_articles
+            WHERE category = %s
+            ORDER BY published_at DESC
+            LIMIT %s OFFSET %s
+        """, (category, per_page, offset))
+    else:
+        cursor.execute("""
+            SELECT title, link, category, source, published_at
+            FROM news_articles
+            ORDER BY published_at DESC
+            LIMIT %s OFFSET %s
+        """, (per_page, offset))
+
+    rows = cursor.fetchall()
+
+    articles = [
+        {
+            "title": row[0],
+            "link": row[1],
+            "category": row[2],
+            "source": row[3],
+            "published_at": row[4].isoformat() if row[4] else None
+        }
+        for row in rows
+    ]
+
+    conn.close()
+    return jsonify(articles)
+
 
 @app.route("/")
-def index():
-    return "Greek Tax API is running!"
-
-@app.route("/api/news", methods=["GET"])
-def get_news():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT title, link, source, created_at
-            FROM news_articles
-            ORDER BY created_at DESC
-            LIMIT 20
-        """)
-
-        rows = cur.fetchall()
-
-        articles = [
-            {
-                "title": row[0],
-                "link": row[1],
-                "source": row[2],
-                "created_at": row[3].isoformat() if row[3] else None
-            }
-            for row in rows
-        ]
-
-        cur.close()
-        conn.close()
-
-        return jsonify(articles)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+def home():
+    return "Greek Tax News API running 🚀"
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
